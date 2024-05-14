@@ -74,8 +74,10 @@ async def insert_data_common(thread_id, store, batch_size):
         all_tasks_done.clear()  # Clear the event if set
 
 # Function to insert data into the database
-async def insert_data_sql(thread_id):
+async def insert_data_tidb(thread_id):
     # Connect to the database
+    # CREATE TABLE `customer` (  `name` char(64) primary key,  `json` json DEFAULT NULL,  `json_name` char(64) 
+    # GENERATED ALWAYS AS (json_extract(`json`, _utf8mb4'$.name')) VIRTUAL, KEY `json_name_1` (json_name) );
     conn = await aiomysql.connect(
         host="192.168.1.232",
         port= 33721,
@@ -90,6 +92,8 @@ async def insert_data_sql(thread_id):
     
 async def insert_data_crdb(thread_id):
       # Connect to the database
+    # CREATE TABLE customer (  name char(64) primary key,  json JSON DEFAULT NULL,  json_name char(64) GENERATED ALWAYS AS ((json->>'name')) VIRTUAL);
+    # CREATE INDEX idx_derived_column ON customer ((json->>'name'));
     conn = await asyncpg.connect(
         host="192.168.1.232",
         port= 26257,
@@ -103,7 +107,9 @@ async def insert_data_crdb(thread_id):
     await conn.close()
 
 async def insert_data_pg(thread_id):
-      # Connect to the database
+    # Connect to the database
+    # CREATE TABLE customer (  name char(64) primary key,  json JSON DEFAULT NULL,  json_name char(64) GENERATED ALWAYS AS ((json->>'name')) STORED);
+    # CREATE INDEX idx_derived_column ON customer ((json->>'name'));
     conn = await asyncpg.connect(
         host="localhost",
         port= 5433,
@@ -224,8 +230,8 @@ async def main():
 
 def create_task(num_tasks, tasks, store_type):
     for i in range(num_tasks):
-        if store_type == "sql":
-            task = asyncio.create_task(insert_data_sql(i))
+        if store_type == "tidb":
+            task = asyncio.create_task(insert_data_tidb(i))
             tasks.append(task)
         elif store_type == "tx_kv":
             task = asyncio.create_task(insert_data_kv(i))
