@@ -19,6 +19,7 @@ from azure.cosmos import exceptions, PartitionKey
 from azure.cosmos.aio import CosmosClient
 
 import sys
+import uuid
 
 # Global variables to track throughput
 total_keys_inserted = 0
@@ -48,23 +49,23 @@ def generate_random_json():
     # Randomly select a name and city
     name = random.choice(names)
     city = random.choice(cities)
+    # Generate a random UUID
+    id = str(uuid.uuid4())
     
     # Generate a random age between 18 and 80
     age = random.randint(18, 80)
     
     # Construct and return the JSON object
-    json_content = {"name": name, "age": age, "city": city}
+    json_content = {"id": id, "name": name, "age": age, "city": city}
     return json_content
 
 
 async def insert_data_common(thread_id, store, batch_size):
     global total_keys_inserted
-    for j in range(100000):
-        # Create a new transaction
-        keys = [f"{thread_id}_{generate_random_key()}" for _ in range(batch_size)]
+    for j in range(1000):
+        # Create a new transaction  
         json_content = [generate_random_json() for _ in range(batch_size)]
-        for json_obj, key in zip(json_content, keys):
-            json_obj["id"] = key
+        keys = [json_obj["id"] for json_obj in json_content]
         index_keys = [[json_obj["name"]] for json_obj in json_content]
         await store.batch_insert(keys, json_content, index_keys)
         total_keys_inserted += batch_size
@@ -76,8 +77,8 @@ async def insert_data_common(thread_id, store, batch_size):
 # Function to insert data into the database
 async def insert_data_tidb(thread_id):
     # Connect to the database
-    # CREATE TABLE `customer` (  `name` char(64) primary key,  `json` json DEFAULT NULL,  `json_name` char(64) 
-    # GENERATED ALWAYS AS (json_extract(`json`, _utf8mb4'$.name')) VIRTUAL, KEY `json_name_1` (json_name) );
+    # CREATE TABLE `customer`(`id` char(64) primary key GENERATED ALWAYS AS (json_extract(`json`, _utf8mb4'$.id')) STORED, `json` json DEFAULT NULL,  `name` char(64) 
+    # GENERATED ALWAYS AS (json_extract(`json`, _utf8mb4'$.name')) STORED, KEY `json_name_1` (name));
     conn = await aiomysql.connect(
         host="192.168.1.232",
         port= 33721,
@@ -92,7 +93,7 @@ async def insert_data_tidb(thread_id):
     
 async def insert_data_crdb(thread_id):
       # Connect to the database
-    # CREATE TABLE customer (  name char(64) primary key,  json JSON DEFAULT NULL,  json_name char(64) GENERATED ALWAYS AS ((json->>'name')) VIRTUAL);
+    # CREATE TABLE customer (id char(64) primary key GENERATED ALWAYS AS ((json->>'id')) STORED, json JSON DEFAULT NULL,  name char(64) GENERATED ALWAYS AS ((json->>'name')) STORED);
     # CREATE INDEX idx_derived_column ON customer ((json->>'name'));
     conn = await asyncpg.connect(
         host="192.168.1.232",
@@ -108,7 +109,7 @@ async def insert_data_crdb(thread_id):
 
 async def insert_data_pg(thread_id):
     # Connect to the database
-    # CREATE TABLE customer (  name char(64) primary key,  json JSON DEFAULT NULL,  json_name char(64) GENERATED ALWAYS AS ((json->>'name')) STORED);
+    # CREATE TABLE customer (id char(64) primary key GENERATED ALWAYS AS ((json->>'id')) STORED,  json JSON DEFAULT NULL,  name char(64) GENERATED ALWAYS AS ((json->>'name')) STORED);
     # CREATE INDEX idx_derived_column ON customer ((json->>'name'));
     conn = await asyncpg.connect(
         host="localhost",
@@ -148,7 +149,7 @@ async def insert_data_cosmosdb(thread_id):
             db = await client.get_database_client(DATABASE_ID)
         # setup container for this sample
         try:
-                # json_content = {"name": name, "age": age, "city": city}
+                # json_content = {"id": id, "name": name, "age": age, "city": city}
             indexing_policy = {
                 "indexingMode": "consistent",
                 "includedPaths": [
