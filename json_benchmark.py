@@ -15,14 +15,18 @@ from kv_json import KVStore
 from raw_kv_json import RawKVStore
 from pg_json import PgStore
 from cosmos_json import CosmosStore
+from cql_json import CqlStore
 from azure.cosmos import exceptions, PartitionKey
 from azure.cosmos.aio import CosmosClient
+from aiocassandra import aiosession
+from cassandra.cluster import Cluster
 
 import sys
 import uuid
 
 # Global variables to track throughput
 total_keys_inserted = 0
+total_keys_queried = 0
 all_tasks_done = asyncio.Event()
 start_time = None
 end_time = None
@@ -62,7 +66,7 @@ def generate_random_json():
 
 async def insert_data_common(thread_id, store, batch_size):
     global total_keys_inserted
-    for j in range(1000):
+    for j in range(1000000):
         # Create a new transaction  
         json_content = [generate_random_json() for _ in range(batch_size)]
         keys = [json_obj["id"] for json_obj in json_content]
@@ -74,11 +78,24 @@ async def insert_data_common(thread_id, store, batch_size):
     if all_tasks_done.is_set():
         all_tasks_done.clear()  # Clear the event if set
 
+async def query_data_common(store, batch_size):
+    global total_keys_queried
+    # Query the data
+    for i in range(100000):
+        
+        await store.multi_get_by(names[i:i+batch_size])
+        i += batch_size
+        total_keys_queried += 1
+
+      # Check if all tasks are done
+    if all_tasks_done.is_set():
+        all_tasks_done.clear()  # Clear the event if set
+
 # Function to insert data into the database
 async def insert_data_tidb(thread_id):
     # Connect to the database
-    # CREATE TABLE `customer`(`id` char(64) primary key GENERATED ALWAYS AS (json_extract(`json`, _utf8mb4'$.id')) STORED, `json` json DEFAULT NULL,  `name` char(64) 
-    # GENERATED ALWAYS AS (json_extract(`json`, _utf8mb4'$.name')) STORED, KEY `json_name_1` (name));
+    # CREATE TABLE `customer`(`id` char(64) primary key GENERATED ALWAYS AS (JSON_UNQUOTE(json_extract(`json`, '$.id'))) STORED, `json` json DEFAULT NULL,  `name` char(64) 
+    # GENERATED ALWAYS AS (JSON_UNQUOTE(json_extract(`json`, '$.name'))) STORED, KEY `json_name_1` (name));
     conn = await aiomysql.connect(
         host="192.168.1.232",
         port= 33721,
@@ -86,15 +103,33 @@ async def insert_data_tidb(thread_id):
         password="",
         db="sbtest3"
     )
-    store = SqlStore("customer", conn)
+    store = SqlStore("customer", conn, binary_json=True)
     batch_size = 10
-    await insert_data_common(thread_id, store, batch_size) 
+    #await insert_data_common(thread_id, store, batch_size)
+    await query_data_common(store,batch_size)
+    conn.close()
+
+async def insert_data_mysql(thread_id):
+    # Connect to the database
+    # CREATE TABLE `customer`(`id` char(64) GENERATED ALWAYS AS (json->>'$.id') STORED primary key, `json` json DEFAULT NULL,  `name` char(64) 
+    # GENERATED ALWAYS AS (json->>'$.name') STORED, KEY `json_name_1` (name));
+    conn = await aiomysql.connect(
+        host="127.0.0.1",
+        port= 3317,
+        user="root",
+        password="",
+        db="sbtest3"
+    )
+    store = SqlStore("customer", conn, binary_json=False)
+    batch_size = 10
+    #await insert_data_common(thread_id, store, batch_size)
+    await query_data_common(store,batch_size)
     conn.close()
     
 async def insert_data_crdb(thread_id):
       # Connect to the database
     # CREATE TABLE customer (id char(64) primary key GENERATED ALWAYS AS ((json->>'id')) STORED, json JSON DEFAULT NULL,  name char(64) GENERATED ALWAYS AS ((json->>'name')) STORED);
-    # CREATE INDEX idx_derived_column ON customer ((json->>'name'));
+    # CREATE INDEX ON test2.public.customer (name) STORING (json);
     conn = await asyncpg.connect(
         host="192.168.1.232",
         port= 26257,
@@ -104,13 +139,14 @@ async def insert_data_crdb(thread_id):
     )
     store = PgStore("customer", conn)
     batch_size = 10
-    await insert_data_common(thread_id, store, batch_size) 
+    #await insert_data_common(thread_id, store, batch_size) 
+    await query_data_common(store, batch_size)
     await conn.close()
 
 async def insert_data_pg(thread_id):
     # Connect to the database
     # CREATE TABLE customer (id char(64) primary key GENERATED ALWAYS AS ((json->>'id')) STORED,  json JSON DEFAULT NULL,  name char(64) GENERATED ALWAYS AS ((json->>'name')) STORED);
-    # CREATE INDEX idx_derived_column ON customer ((json->>'name'));
+    # CREATE INDEX idx_derived_column ON customer (name);
     conn = await asyncpg.connect(
         host="localhost",
         port= 5433,
@@ -120,7 +156,8 @@ async def insert_data_pg(thread_id):
     )
     store = PgStore("customer", conn)
     batch_size = 10
-    await insert_data_common(thread_id, store, batch_size) 
+    #await insert_data_common(thread_id, store, batch_size)
+    await query_data_common(store, batch_size)
     await conn.close()
 
 async def insert_data_kv(thread_id):
@@ -129,6 +166,7 @@ async def insert_data_kv(thread_id):
     store = KVStore(500, client)
     batch_size = 10
     await insert_data_common(thread_id, store, batch_size)
+    await query_data_common(store, batch_size)
 
 async def insert_data_raw_kv(thread_id):
     # Connect to the database
@@ -136,6 +174,7 @@ async def insert_data_raw_kv(thread_id):
     store = RawKVStore(300, client)
     batch_size = 10
     await insert_data_common(thread_id, store, batch_size)
+    await query_data_common(store, batch_size)
 
 async def insert_data_cosmosdb(thread_id):
     HOST = "https://cosmos-db-free-tier-moray.documents.azure.com:443/"
@@ -172,25 +211,42 @@ async def insert_data_cosmosdb(thread_id):
         batch_size = 10
         store = CosmosStore(container)  
         await insert_data_common(thread_id, store, batch_size)
+        await query_data_common(store, batch_size)
         # cleanup database after sample
         try:
            await client.delete_database(db)
         except exceptions.CosmosResourceNotFoundError:
            pass
 
+async def insert_data_cql_json(thread_id):
+    # Connect to the database
+    cluster = Cluster(["127.0.0.1"], port=19042)
+    session = cluster.connect("ns1")
+    aiosession(session)
+    store = CqlStore("customer", session)
+    batch_size = 10
+    await insert_data_common(thread_id, store, batch_size)
+    session.shutdown()
+    cluster.shutdown()
+
+
 # Function to periodically measure throughput
 async def measure_throughput():
     global total_keys_inserted
+    global total_keys_queried
     global start_time
     global end_time
 
     prev_keys_inserted = 0
+    prev_keys_queried = 0
     start_time = time.time()
     while True:
         await asyncio.sleep(1)  # Measure throughput every second
         keys_inserted_this_second = total_keys_inserted - prev_keys_inserted
+        keys_queries_this_seconcd = total_keys_queried - prev_keys_queried
         prev_keys_inserted = total_keys_inserted
-        print(f"Throughput: {keys_inserted_this_second} keys/second")
+        prev_keys_queried = total_keys_queried
+        print(f"Throughput: Insert {keys_inserted_this_second} keys/second, Query {keys_queries_this_seconcd}/keys/second")
         # Check if all tasks are done
         if all_tasks_done.is_set():
             end_time = time.time()
@@ -199,7 +255,7 @@ async def measure_throughput():
 # Main function to spawn tasks and execute insertions
 async def main():
     # Number of tasks to spawn
-    num_tasks = 64
+    num_tasks = 1
 
     # Create and start tasks
     tasks = []
@@ -234,6 +290,9 @@ def create_task(num_tasks, tasks, store_type):
         if store_type == "tidb":
             task = asyncio.create_task(insert_data_tidb(i))
             tasks.append(task)
+        elif store_type == "mysql":
+            task = asyncio.create_task(insert_data_mysql(i))
+            tasks.append(task)
         elif store_type == "tx_kv":
             task = asyncio.create_task(insert_data_kv(i))
             tasks.append(task)
@@ -248,6 +307,9 @@ def create_task(num_tasks, tasks, store_type):
             tasks.append(task)
         elif store_type == "cosmosdb":
             task = asyncio.create_task(insert_data_cosmosdb(i))
+            tasks.append(task)
+        elif store_type == "cql":
+            task = asyncio.create_task(insert_data_cql_json(i))
             tasks.append(task)
         else:
             print("Invalid store_type parameter")
