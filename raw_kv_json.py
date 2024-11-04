@@ -42,3 +42,6 @@ class RawKVStore(Store):
         encoded_key = await self.get(encoded_index_key)
         json_value = await self.get(encoded_key)
         return json_value
+
+    async def multi_get_by(self, index_keys):
+        return await self.client.batch_get([f"t_{self.table_id}_i{index_key}".encode() for index_key in index_keys])

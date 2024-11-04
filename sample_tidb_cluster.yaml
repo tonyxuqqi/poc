@@ -1,0 +1,112 @@
+global:
+  user: tidb
+  ssh_port: 22
+  ssh_type: builtin
+  deploy_dir: /data_fast/tidb
+  data_dir: /data_fast/tidb/data
+  os: linux
+  arch: amd64
+monitored:
+  node_exporter_port: 33814
+  blackbox_exporter_port: 33813
+  deploy_dir: /data_fast/tidb/tidb-deploy-33721/monitor-23812
+  data_dir: /data_fast/tidb/tidb-data-33721/monitor-23812
+  log_dir: /data_fast/tidb/tidb-deploy-33721/monitor-23812/log
+server_configs:
+  tidb: {}
+  tikv:
+    storage.block-cache.capacity: 10GB
+  pd:
+    replication.enable-placement-rules: true
+    replication.location-labels:
+    - host
+    replication.max-replicas: 3
+  tiflash: {}
+  tiflash-learner: {}
+  pump: {}
+  drainer: {}
+  cdc: {}
+tidb_servers:
+- host: 192.168.1.232
+  ssh_port: 22
+  port: 33721
+  status_port: 33722
+  deploy_dir: /data_fast/tidb-deploy/mtk-1
+  log_dir: /data_fast/tidb-deploy/mtk-1/log
+  arch: amd64
+  os: linux
+tikv_servers:
+- host: 192.168.1.232
+  ssh_port: 22
+  patched: true
+  port: 33731
+  status_port: 33732
+  deploy_dir: /data_fast/tikv1
+  data_dir: /data_fast/tikv1/data
+  log_dir: /data_fast/tikv1/log
+  config:
+    server.labels:
+      host: tikv1
+  arch: amd64
+  os: linux
+- host: 192.168.1.232
+  ssh_port: 22
+  patched: true
+  port: 33733
+  status_port: 33734
+  deploy_dir: /data_fast/tikv2
+  data_dir: /data_fast/tikv2/data
+  log_dir: /data_fast/tikv2/log
+  config:
+    server.labels:
+      host: tikv2
+  arch: amd64
+  os: linux
+- host: 192.168.1.232
+  ssh_port: 22
+  patched: true
+  port: 33735
+  status_port: 33736
+  deploy_dir: /data_fast/tikv3
+  data_dir: /data_fast/tikv3/data
+  log_dir: /data_fast/tikv3/log
+  config:
+    server.labels:
+      host: tikv3
+  arch: amd64
+  os: linux
+tiflash_servers: []
+pd_servers:
+- host: 192.168.1.232
+  ssh_port: 22
+  name: qixu-pd-3
+  client_port: 33815
+  peer_port: 33816
+  deploy_dir: /data_fast/pd
+  data_dir: /mnt/ramdisk/pd/data
+  log_dir: /mnt/ramdisk/pd/log
+  arch: amd64
+  os: linux
+monitoring_servers:
+- host: 192.168.1.232 
+  ssh_port: 22
+  port: 33751
+  deploy_dir: /data_fast/tidb/tidb-deploy-33721/qixu-prometheus-33751
+  data_dir: /data_fast/tidb/tidb-data-33721/qixu-prometheus-33751
+  log_dir: /data_fast/tidb/tidb-data-33721/qixu-prometheus-8249-log
+  external_alertmanagers: []
+  storage_retention: 3000d
+  arch: amd64
+  os: linux
+grafana_servers:
+- host: 192.168.1.232 
+  ssh_port: 22
+  port: 33761
+  deploy_dir: /data_fast/tidb/tidb-data-33721/qixu-grafana-33761
+  arch: amd64
+  os: linux
+  username: admin
+  password: admin
+  anonymous_enable: false
+  root_url: ""
+  domain: ""
