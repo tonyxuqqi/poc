@@ -170,7 +170,7 @@ async def insert_data_kv(thread_id):
 
 async def insert_data_raw_kv(thread_id):
     # Connect to the database
-    client = await RawClient.connect(["192.168.1.232:33815"])
+    client = await RawClient.connect(["40.76.113.99:2379"])
     store = RawKVStore(300, client)
     batch_size = 10
     await insert_data_common(thread_id, store, batch_size)

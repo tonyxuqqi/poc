@@ -210,11 +210,12 @@ var (
 	startTime         time.Time
 	endTime           time.Time
 	allTasksDone      chan struct{}
+	payload           string
 )
 
 // Function to generate random data for insertion
 func generateRandomData() string {
-	return strings.Join(randStrings(1024*6), "")
+	return payload
 }
 
 // Function to generate random key
@@ -235,6 +236,24 @@ func randStrings(n int) []string {
 func randString() string {
 	const charset = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
 	b := make([]byte, 5)
+	for i := range b {
+		b[i] = charset[rand.Intn(len(charset))]
+	}
+	return string(b)
+}
+
+func randString2(n int) string {
+	const charset = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
+	b := make([]byte, n)
+	for i := range b {
+		b[i] = charset[rand.Intn(len(charset))]
+	}
+	return string(b)
+}
+
+func randString3(n int) string {
+	const charset = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
+	b := make([]byte, n)
 	for i := range b {
 		b[i] = charset[rand.Intn(len(charset))]
 	}
@@ -275,6 +294,7 @@ func insertData(db *sql.DB, threadID int, wg *sync.WaitGroup) {
 
 // Function to insert data into the database
 func insertData2(db *ColStore, threadID int, wg *sync.WaitGroup) {
+	payload = randString2(1024 * 32)
 	for j := 0; j < 100000; j++ {
 		// Generate random data
 		jsons := make([]map[string]interface{}, 0)
@@ -311,6 +331,7 @@ func insertData2(db *ColStore, threadID int, wg *sync.WaitGroup) {
 
 // Function to insert data into the database
 func insertData_Kv(kv *KvStore, threadID int, wg *sync.WaitGroup) {
+	payload = randString2(1024 * 32)
 	for j := 0; j < 100000; j++ {
 		// Generate random data
 		jsons := make([]map[string]interface{}, 0)
@@ -455,7 +476,7 @@ func main() {
 	// Initialize random seed
 	rand.Seed(time.Now().UnixNano())
 	// Number of goroutines to spawn
-	numGoroutines := 1
+	numGoroutines := 16
 
 	// Start measuring throughput
 	allTasksDone = make(chan struct{})
@@ -498,13 +519,15 @@ func main() {
 
 	} else if *db_type == "kv" {
 		fmt.Printf("Using TiKV\n")
-		cli, err := rawkv.NewClient(context.TODO(), []string{"192.168.1.232:33815"}, config.DefaultConfig().Security)
+		cli, err := rawkv.NewClient(context.TODO(), []string{"40.76.113.99:2379", "172.210.66.23:2379", "20.84.67.12:2379"}, config.DefaultConfig().Security)
 		if err != nil {
 			log.Fatal("Error connecting to tikv:", err)
 			return
 		}
 		kv := NewKvStore(cli)
-		go insertData_Kv(kv, 0, &wg)
+		for i := 0; i < numGoroutines; i++ {
+			go insertData_Kv(kv, i, &wg)
+		}
 	}
 
 	// Wait for all goroutines to finish
